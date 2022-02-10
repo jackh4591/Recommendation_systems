@@ -1,0 +1,149 @@
+---
+title: "Item_collaborative_filtering_recommender"
+author: "Jack Hickey"
+date: "2/5/2022"
+output: html_document
+---
+
+This is an item based collaborative recommendation system.
+
+Michael Hahsler writing the recommenderlab description paper - The premise is that users who agreed on the rating for some items typically also agree on the rating for other items.
+```{r}
+library(recommenderlab)
+library(ggplot2)
+library(data.table)
+library(reshape2)
+```
+
+
+```{r}
+movies <- read.csv("movies.csv")
+ratings <- read.csv("ratings.csv")
+
+#check layout of the two datasets
+head(movies)
+head(ratings)
+
+str(movies)
+str(ratings)
+
+summary(movies)
+summary(ratings)
+```
+
+So both datasets possess the MovieId column.
+Noticeably the Genre column in `movies` is in character format which isn't very helpful to us in terms of usability. Instead now we will transform this into a one-hot encoding that contains the 18 genres present in the dataset i.e transform the categorical variable into multiple variables set with a value of 1 or 0 (1 for when it is that particular genre and 0 if not). 
+This is actually quite awkward due to the way that the Genre column is set up, using `|` as a seperator between genres in situations whereby some movies are comprised of multiple genres.
+
+```{r}
+library(data.table)
+head(movies$genres)
+#create new dataframe just comprised of the genres column
+movie_genres <- data.frame(movies$genres, stringsAsFactors = F)
+
+#now split the column using the `|` delimiter 
+#note tstrsplit is the equivalent to: transpose(strsplit(x))
+movie_genres2 <- data.frame(tstrsplit(movie_genres[,1], '[|]', type.convert = T), stringsAsFactors = F)
+#movie_genres2 now contains columns with the separated genres for each movie, notably there are 10 so these are now labelled 1 to 10
+colnames(movie_genres2) <- c(1:10)
+
+#list all the possible genres
+genres <- c("Action", "Adventure", "Animation", "Children", "Comedy", "Crime","Documentary", "Drama", "Fantasy", "Film-Noir", "Horror", "Musical", "Mystery","Romance", "Sci-Fi", "Thriller", "War", "Western")
+
+#create empty matrix of 0's to fit the genres i.e 10330 rows (10329 rows of movies and 1 for the genre headings which will be coded in also) and 18 columns for the 18 possible genres
+genre_mat <- matrix(0,10330,18)
+genre_mat[1,] <- genres
+colnames(genre_mat) <- genres
+
+#nested for loops to scan through the genre matrix
+for (index in 1:nrow(movie_genres2)) {
+  for(col in 1:ncol(movie_genres2)) {
+    genre_col = which(genre_mat[1,] == movie_genres2[index,col])
+    genre_mat[index+1,genre_col] <- 1
+  }
+}
+
+#remove the genre heading row in the dataframe
+genre_mat1 <- as.data.frame(genre_mat[-1,], stringsAsFactors = F)
+
+#the values are in character format so this needs to be changed to integers
+for(col in 1:ncol(genre_mat1)) {
+  genre_mat1[,col] <- as.integer(genre_mat1[,col])
+}
+
+head(genre_mat1)
+str(genre_mat1)
+```
+
+So now as we have preserved the order of the matrix throughout, thus the top row of our Genre Matrix is still the first element in the original movies dataset (i.e Toystory) these can be binded to form a search matrix of movies with their own genre allocations
+```{r}
+search_mat <- cbind(movies[,1:2], genre_mat1[])
+head(search_mat)
+
+#dcast is a long to wide tool in data.table
+rating_mat <- reshape2::dcast(ratings, userId~movieId, value.var = "rating", na.rm=F)
+rating_mat <- as.matrix(rating_mat[,-1]) #get rid of UserId column
+
+#now we transform this matrix into recommenderlab realRatingMatrix
+rating_mat <- as(rating_mat, "realRatingMatrix")
+rating_mat
+```
+
+Now we will look at some of the parameters that may be put forward towards building recommendation systems
+```{r}
+recommend <- recommenderRegistry$get_entries(dataType = "realRatingMatrix")
+names(recommend)
+
+#obtain a description of some parameters
+lapply(recommend, "[[", "description")
+```
+
+NOTE: $IBCF_realRatingMatrix
+[1] "Recommender based on item-based collaborative filtering."
+
+We are going to use this for this project
+```{r}
+#view the parameters of ICBF matrix
+recommend$IBCF_realRatingMatrix$parameters
+
+```
+
+The IBCF method for recommending movies relies on creating a relationship of similarity between users.
+Using the recommenderlab package we can compute similarities
+
+Below we will create a matrix of users similarity to each other
+```{r}
+sim_mat <- similarity(rating_mat[1:4,],
+                      method = "cosine",
+                      which = "users")
+as.matrix(sim_mat)
+image(as.matrix(sim_mat), main = "User Similarity")
+```
+
+now repeat the above chunk but for the movies
+```{r}
+movie_sim <- similarity(rating_mat[,1:4], method = "cosine", which = "items")
+
+as.matrix(movie_sim)
+image(as.matrix(movie_sim), main = "Movie Similarity")
+```
+
+
+```{r}
+#look at the most unique ratings
+rating_values <- as.vector(rating_mat@data)
+unique(rating_values)
+
+#display the unique ratings here in a table
+ratings_table <- table(rating_values)
+ratings_table
+```
+
+some visualization exploration
+```{r}
+```
+
+
+```{r}
+```
+
